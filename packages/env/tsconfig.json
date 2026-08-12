@@ -1,0 +1,3 @@
+{
+  "extends": "@ponto-next/config/tsconfig.base.json"
+}
