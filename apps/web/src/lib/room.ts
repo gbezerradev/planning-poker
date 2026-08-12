@@ -1,34 +1,9 @@
 import { db } from "@ponto-next/db";
 import { participants, rooms, stories, votes } from "@ponto-next/db/schema";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 
-const STARTER_STORIES = [
-  {
-    key: "PP-241",
-    title: "Novo fluxo de checkout em uma página",
-    description: "Como cliente, quero concluir minha compra sem trocar de página para reduzir o abandono no carrinho.",
-    tag: "Produto",
-  },
-  {
-    key: "PP-242",
-    title: "Permitir login com passkey",
-    description: "Como cliente, quero acessar minha conta com passkey para entrar com mais segurança e menos atrito.",
-    tag: "Segurança",
-  },
-  {
-    key: "PP-238",
-    title: "Dashboard de métricas da equipe",
-    description: "Como liderança, quero acompanhar as principais métricas da sprint em um único lugar.",
-    tag: "Analytics",
-  },
-  {
-    key: "PP-235",
-    title: "Histórico de notificações",
-    description: "Como usuário, quero consultar notificações antigas para não perder nenhuma atualização.",
-    tag: "Produto",
-  },
-];
+const PRESENCE_TIMEOUT_MS = 30_000;
 
 export async function ensureRoom(code: string, roomName?: string) {
   await db.execute(sql`
@@ -45,6 +20,7 @@ export async function ensureRoom(code: string, roomName?: string) {
       key text NOT NULL,
       title text NOT NULL,
       description text NOT NULL,
+      notes text NOT NULL DEFAULT '',
       tag text NOT NULL,
       position integer NOT NULL,
       estimate integer
@@ -69,18 +45,10 @@ export async function ensureRoom(code: string, roomName?: string) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS votes_round_participant_idx
       ON votes (room_code, story_id, participant_id, round);
+    ALTER TABLE stories ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT '';
   `);
 
   await db.insert(rooms).values({ code, name: roomName?.trim().slice(0, 60) || `Sala ${code}` }).onConflictDoNothing();
-  const currentStories = await db.select().from(stories).where(eq(stories.roomCode, code));
-
-  if (currentStories.length === 0) {
-    const inserted = await db
-      .insert(stories)
-      .values(STARTER_STORIES.map((story, position) => ({ ...story, position, roomCode: code })))
-      .returning();
-    await db.update(rooms).set({ activeStoryId: inserted[0]?.id }).where(eq(rooms.code, code));
-  }
 }
 
 export async function createRoom(name: string) {
@@ -103,13 +71,20 @@ export async function getRoomState(code: string, participantId?: string | null) 
 
   const storyRows = await db.select().from(stories).where(eq(stories.roomCode, code)).orderBy(asc(stories.position));
   const activeStory = storyRows.find((story) => story.id === room.activeStoryId) ?? storyRows[0];
-  const participantRows = await db.select().from(participants).where(eq(participants.roomCode, code));
-  const voteRows = activeStory
+  const participantRows = await db
+    .select()
+    .from(participants)
+    .where(and(
+      eq(participants.roomCode, code),
+      gte(participants.lastSeenAt, new Date(Date.now() - PRESENCE_TIMEOUT_MS))
+    ));
+  const onlineParticipantIds = new Set(participantRows.map((participant) => participant.id));
+  const voteRows = (activeStory
     ? await db
         .select()
         .from(votes)
         .where(and(eq(votes.roomCode, code), eq(votes.storyId, activeStory.id), eq(votes.round, room.round)))
-    : [];
+    : []).filter((vote) => onlineParticipantIds.has(vote.participantId));
 
   const numericVotes = voteRows.map((vote) => Number(vote.value)).filter((vote) => Number.isFinite(vote));
   const average = numericVotes.length
@@ -151,14 +126,65 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
     const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
     const colors = ["plum", "coral", "lime", "blue", "gold"];
     const color = colors[[...participantId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % colors.length];
-    await db.insert(participants).values({ roomCode: code, id: participantId, name, initials, color: color ?? "plum" })
+    const currentParticipants = await db.select().from(participants).where(eq(participants.roomCode, code));
+    const role = currentParticipants.length === 0 ? "Facilitador" : "Time";
+    await db.insert(participants).values({ roomCode: code, id: participantId, name, initials, role, color: color ?? "plum" })
       .onConflictDoUpdate({ target: [participants.roomCode, participants.id], set: { name, initials, color: color ?? "plum", lastSeenAt: new Date() } });
+    return;
+  }
+
+  if (action === "leave" && participantId) {
+    await db
+      .update(participants)
+      .set({ lastSeenAt: new Date(0) })
+      .where(and(eq(participants.roomCode, code), eq(participants.id, participantId)));
+    await db
+      .delete(votes)
+      .where(and(eq(votes.roomCode, code), eq(votes.participantId, participantId)));
+    return;
+  }
+
+  if (action === "addStory") {
+    const title = String(input.title ?? "").trim().slice(0, 140);
+    if (!title) return;
+    const description = String(input.description ?? "").trim().slice(0, 1200);
+    const tag = String(input.tag ?? "Produto").trim().slice(0, 30) || "Produto";
+    const key = String(input.key ?? "").trim().slice(0, 20) || `PP-${randomBytes(2).toString("hex").toUpperCase()}`;
+    const currentStories = await db.select().from(stories).where(eq(stories.roomCode, code));
+    const [created] = await db.insert(stories).values({
+      roomCode: code,
+      key,
+      title,
+      description: description || "Sem descrição adicionada.",
+      notes: "",
+      tag,
+      position: currentStories.length,
+    }).returning();
+    if (created) {
+      await db.update(rooms).set({
+        activeStoryId: created.id,
+        revealed: false,
+        round: room.round + 1,
+      }).where(eq(rooms.code, code));
+    }
+    return;
+  }
+
+  if (action === "updateNotes") {
+    const storyId = Number(input.storyId);
+    const notes = String(input.notes ?? "").slice(0, 5000);
+    await db.update(stories).set({ notes }).where(and(eq(stories.roomCode, code), eq(stories.id, storyId)));
     return;
   }
 
   if (action === "vote") {
     const value = String(input.value ?? "");
     if (!room.activeStoryId || !["0", "1", "2", "3", "5", "8", "13", "21", "?", "☕"].includes(value)) return;
+    const [activeStory] = await db
+      .select()
+      .from(stories)
+      .where(and(eq(stories.roomCode, code), eq(stories.id, room.activeStoryId)));
+    if (!activeStory || activeStory.estimate !== null) return;
     await db.insert(votes).values({ roomCode: code, storyId: room.activeStoryId, participantId, round: room.round, value })
       .onConflictDoUpdate({ target: [votes.roomCode, votes.storyId, votes.participantId, votes.round], set: { value } });
     return;
@@ -184,7 +210,7 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
     const estimate = Number(input.estimate);
     await db.update(stories).set({ estimate }).where(and(eq(stories.roomCode, code), eq(stories.id, room.activeStoryId)));
     const remaining = await db.select().from(stories).where(and(eq(stories.roomCode, code), sql`${stories.estimate} IS NULL`)).orderBy(asc(stories.position));
-    const next = remaining.find((story) => story.id !== room.activeStoryId);
+    const next = remaining[0];
     await db.update(rooms).set({ activeStoryId: next?.id ?? room.activeStoryId, revealed: false, round: room.round + 1 }).where(eq(rooms.code, code));
   }
 }

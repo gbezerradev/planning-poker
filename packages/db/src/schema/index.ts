@@ -14,6 +14,7 @@ export const stories = pgTable("stories", {
   key: text("key").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),
+  notes: text("notes").notNull().default(""),
   tag: text("tag").notNull(),
   position: integer("position").notNull(),
   estimate: integer("estimate"),
