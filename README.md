@@ -1,6 +1,14 @@
 # PONTO
 
-Planning poker colaborativo feito com Next.js, PostgreSQL e Drizzle. Não possui login: cada pessoa informa apenas o nome, que fica salvo no próprio navegador.
+Planning poker colaborativo feito com Next.js, PostgreSQL e Drizzle. Não possui login: o facilitador cria uma sala privada por link e cada participante informa o próprio nome, salvo apenas no navegador.
+
+## Como funciona
+
+1. Na página inicial, informe o nome da sessão e o seu nome.
+2. A aplicação cria uma URL exclusiva no formato `/room/289ece0244d3`.
+3. Use **Convidar** para copiar o link e enviá-lo ao time.
+4. Cada pessoa que abrir o link informa o próprio nome antes de votar.
+5. Votos, rodadas, participantes e estimativas ficam persistidos no PostgreSQL.
 
 ## Desenvolvimento
 

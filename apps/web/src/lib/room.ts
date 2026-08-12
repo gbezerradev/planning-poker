@@ -1,6 +1,7 @@
 import { db } from "@ponto-next/db";
 import { participants, rooms, stories, votes } from "@ponto-next/db/schema";
 import { and, asc, eq, sql } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 
 const STARTER_STORIES = [
   {
@@ -29,7 +30,7 @@ const STARTER_STORIES = [
   },
 ];
 
-export async function ensureRoom(code: string) {
+export async function ensureRoom(code: string, roomName?: string) {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rooms (
       code text PRIMARY KEY,
@@ -70,7 +71,7 @@ export async function ensureRoom(code: string) {
       ON votes (room_code, story_id, participant_id, round);
   `);
 
-  await db.insert(rooms).values({ code, name: code === "aurora" ? "Sprint Aurora" : `Sala ${code}` }).onConflictDoNothing();
+  await db.insert(rooms).values({ code, name: roomName?.trim().slice(0, 60) || `Sala ${code}` }).onConflictDoNothing();
   const currentStories = await db.select().from(stories).where(eq(stories.roomCode, code));
 
   if (currentStories.length === 0) {
@@ -80,6 +81,12 @@ export async function ensureRoom(code: string) {
       .returning();
     await db.update(rooms).set({ activeStoryId: inserted[0]?.id }).where(eq(rooms.code, code));
   }
+}
+
+export async function createRoom(name: string) {
+  const code = randomBytes(6).toString("hex");
+  await ensureRoom(code, name);
+  return code;
 }
 
 export async function getRoomState(code: string, participantId?: string | null) {
