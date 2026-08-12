@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ponto-next/db": "*",
     "@ponto-next/env": "*",
     "@ponto-next/ui": "*",
     "@swc/helpers": "^0.5.23",

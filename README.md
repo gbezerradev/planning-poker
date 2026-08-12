@@ -1,114 +1,34 @@
-# ponto-next
+# PONTO
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Self, and more.
+Planning poker colaborativo feito com Next.js, PostgreSQL e Drizzle. Não possui login: cada pessoa informa apenas o nome, que fica salvo no próprio navegador.
 
-## Features
+## Desenvolvimento
 
-- **TypeScript** - For type safety and improved developer experience
-- **Next.js** - Full-stack React framework
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Drizzle** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Biome** - Linting and formatting
-
-## Getting Started
-
-First, install the dependencies:
+Requisitos: Node.js LTS e PostgreSQL.
 
 ```bash
+cp apps/web/.env.example apps/web/.env
 npm install
-```
-
-## Database Setup
-
-This project uses PostgreSQL with Drizzle ORM.
-
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/web/.env` file with your PostgreSQL connection details.
-
-3. Apply the schema to your database:
-
-```bash
-npm run db:push
-```
-
-Then, run the development server:
-
-```bash
 npm run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the fullstack application.
+Acesse `http://localhost:3001`. As tabelas e as histórias iniciais são criadas automaticamente na primeira entrada da sala.
 
-## UI Customization
+## Coolify
 
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
+1. Crie um PostgreSQL no mesmo projeto/ambiente da aplicação.
+2. Crie uma aplicação apontando para este repositório.
+3. Selecione o build pack **Dockerfile** e use `apps/web/Dockerfile`.
+4. Defina a porta exposta como `3000`.
+5. Adicione `DATABASE_URL` usando a URL interna do PostgreSQL.
+6. Opcionalmente, defina `NEXT_PUBLIC_APP_URL` com o domínio final para os previews de compartilhamento.
 
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
+Não é necessário executar migrations no deploy: a aplicação prepara o esquema de forma idempotente ao abrir a primeira sala.
 
-### Add more shared components
+## Stack
 
-Run this from the project root to add more primitives to the shared UI package:
-
-```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
-```
-
-Import shared components like this:
-
-```tsx
-import { Button } from "@ponto-next/ui/components/button";
-```
-
-### Add app-specific blocks
-
-If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
-
-## Deployment
-
-### Docker Compose
-
-- Target: web + server
-- Config: `docker-compose.yml` (app Dockerfiles live in `apps/*/Dockerfile`)
-- Build images: npm run docker:build
-- Start: npm run docker:up
-- Logs: npm run docker:logs
-- Stop: npm run docker:down
-
-Environment variables are read from each app's `.env` file (baked into web builds for public variables) and overridden in `docker-compose.yml` for container networking.
-
-For more details, see the guide on [Deploying with Docker Compose](https://www.better-t-stack.dev/docs/guides/docker).
-
-## Git Hooks and Formatting
-
-- Run checks: `npm run check`
-
-## Project Structure
-
-```
-ponto-next/
-├── apps/
-│   └── web/         # Fullstack application (Next.js)
-├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   └── db/          # Database schema & queries
-```
-
-## Available Scripts
-
-- `npm run dev`: Start all applications in development mode
-- `npm run build`: Build all applications
-- `npm run dev:web`: Start only the web application
-- `npm run check-types`: Check TypeScript types across all apps
-- `npm run db:push`: Push schema changes to database
-- `npm run db:generate`: Generate database client/types
-- `npm run db:migrate`: Run database migrations
-- `npm run db:studio`: Open database studio UI
-- `npm run check`: Run Biome formatting and linting
-- `npm run docker:build`: Build the Docker Compose images
-- `npm run docker:up`: Build and start the Docker Compose stack
-- `npm run docker:logs`: Tail logs from the Docker Compose stack
-- `npm run docker:down`: Stop the Docker Compose stack
+- Next.js full-stack (App Router e Route Handlers)
+- PostgreSQL + Drizzle ORM
+- Polling leve a cada 2 segundos para sincronização
+- Docker multi-stage com output standalone
+- Sem autenticação, Redis, WebSocket ou serviços externos
