@@ -64,6 +64,7 @@ const EMPTY_STORY: Story = {
 export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [room, setRoom] = useState<RoomPayload | null>(null);
   const [participantId, setParticipantId] = useState("");
+  const [facilitatorToken, setFacilitatorToken] = useState("");
   const [name, setName] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -99,11 +100,11 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     const response = await fetch(`/api/rooms/${roomCode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, participantId }),
+      body: JSON.stringify({ ...payload, participantId, facilitatorToken }),
     });
     if (!response.ok) throw new Error("Não foi possível atualizar a sala");
     await loadRoom(participantId);
-  }, [loadRoom, participantId, roomCode]);
+  }, [facilitatorToken, loadRoom, participantId, roomCode]);
 
   useEffect(() => {
     let id = localStorage.getItem("ponto_participant_id");
@@ -112,6 +113,8 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
       localStorage.setItem("ponto_participant_id", id);
     }
     const savedName = localStorage.getItem("ponto_name") ?? "";
+    const savedFacilitatorToken = localStorage.getItem(`ponto_facilitator_${roomCode}`) ?? "";
+    setFacilitatorToken(savedFacilitatorToken);
     setParticipantId(id);
     setName(savedName);
     setNameInput(savedName);
@@ -119,7 +122,12 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
       fetch(`/api/rooms/${roomCode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "join", participantId: id, name: savedName }),
+        body: JSON.stringify({
+          action: "join",
+          participantId: id,
+          name: savedName,
+          facilitatorToken: savedFacilitatorToken,
+        }),
       }).then(() => loadRoom(id));
     } else {
       setLoading(false);
@@ -136,10 +144,22 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     if (!participantId || !name) return;
     const leaveRoom = () => {
       const body = JSON.stringify({ action: "leave", participantId });
-      navigator.sendBeacon(`/api/rooms/${roomCode}`, new Blob([body], { type: "application/json" }));
+      const queued = navigator.sendBeacon(`/api/rooms/${roomCode}`, new Blob([body], { type: "application/json" }));
+      if (!queued) {
+        void fetch(`/api/rooms/${roomCode}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+        });
+      }
     };
     window.addEventListener("pagehide", leaveRoom);
-    return () => window.removeEventListener("pagehide", leaveRoom);
+    window.addEventListener("beforeunload", leaveRoom);
+    return () => {
+      window.removeEventListener("pagehide", leaveRoom);
+      window.removeEventListener("beforeunload", leaveRoom);
+    };
   }, [name, participantId, roomCode]);
 
   useEffect(() => {
@@ -148,14 +168,20 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     return () => window.clearInterval(interval);
   }, [timerRunning]);
 
+  const activeStory = room?.stories.find((story) => story.id === room.room.activeStoryId) ?? room?.stories[0] ?? EMPTY_STORY;
+
   const reveal = useCallback(async () => {
+    const isFacilitator = room?.participants.some(
+      (participant) => participant.id === participantId && participant.role === "Facilitador"
+    );
+    if (!isFacilitator) return;
     if (activeStory.estimate !== null) return;
     if (!selected) {
       toast.error("Escolha uma carta antes de revelar os votos.");
       return;
     }
     await sendAction({ action: "reveal" });
-  }, [selected, sendAction]);
+  }, [activeStory.estimate, participantId, room?.participants, selected, sendAction]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -252,7 +278,6 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   };
 
   const hasStories = Boolean(room?.stories.length);
-  const activeStory = room?.stories.find((story) => story.id === room.room.activeStoryId) ?? room?.stories[0] ?? EMPTY_STORY;
   const storyCompleted = activeStory.estimate !== null;
   useEffect(() => {
     setNoteDraft(activeStory.notes ?? "");
@@ -260,6 +285,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const completed = room?.stories.filter((story) => story.estimate !== null).length ?? 0;
   const progress = room?.stories.length ? Math.round((completed / room.stories.length) * 100) : 0;
   const me = room?.participants.find((participant) => participant.id === participantId);
+  const isFacilitator = me?.role === "Facilitador";
   const seats = useMemo(() => {
     const participants = room?.participants.slice(0, 5) ?? [];
     return [...participants, ...Array.from({ length: Math.max(0, 5 - participants.length) }, (_, index) => ({
@@ -422,7 +448,11 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
                   <span className="waiting-icon"><span /><span /><span /></span>
                   <strong>{room?.result.votedCount ?? 0} de {room?.participants.length ?? 0} votaram</strong>
                   <small>Os votos ficam ocultos até a revelação</small>
-                  <button className="reveal-button" onClick={reveal}>Revelar cartas <Sparkles size={16} /></button>
+                  {isFacilitator ? (
+                    <button type="button" className="reveal-button" onClick={reveal}>Revelar cartas <Sparkles size={16} /></button>
+                  ) : (
+                    <small>Aguardando o facilitador revelar as cartas</small>
+                  )}
                 </>
               )}
             </div>

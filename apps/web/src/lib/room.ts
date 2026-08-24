@@ -1,15 +1,31 @@
+import { createHash, randomBytes } from "node:crypto";
 import { db } from "@ponto-next/db";
 import { participants, rooms, stories, votes } from "@ponto-next/db/schema";
 import { and, asc, eq, gte, sql } from "drizzle-orm";
-import { randomBytes } from "node:crypto";
 
-const PRESENCE_TIMEOUT_MS = 30_000;
+const PRESENCE_TIMEOUT_MS = 8_000;
 
-export async function ensureRoom(code: string, roomName?: string) {
+export class RoomActionError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "RoomActionError";
+  }
+}
+
+function hashFacilitatorToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function hasValidFacilitatorToken(tokenHash: string | null, token: string) {
+  return Boolean(tokenHash && token && hashFacilitatorToken(token) === tokenHash);
+}
+
+export async function ensureRoom(code: string, roomName?: string, facilitatorTokenHash?: string) {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS rooms (
       code text PRIMARY KEY,
       name text NOT NULL,
+      facilitator_token_hash text,
       revealed boolean NOT NULL DEFAULT false,
       round integer NOT NULL DEFAULT 1,
       active_story_id integer
@@ -45,16 +61,22 @@ export async function ensureRoom(code: string, roomName?: string) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS votes_round_participant_idx
       ON votes (room_code, story_id, participant_id, round);
+    ALTER TABLE rooms ADD COLUMN IF NOT EXISTS facilitator_token_hash text;
     ALTER TABLE stories ADD COLUMN IF NOT EXISTS notes text NOT NULL DEFAULT '';
   `);
 
-  await db.insert(rooms).values({ code, name: roomName?.trim().slice(0, 60) || `Sala ${code}` }).onConflictDoNothing();
+  await db.insert(rooms).values({
+    code,
+    name: roomName?.trim().slice(0, 60) || `Sala ${code}`,
+    facilitatorTokenHash: facilitatorTokenHash ?? null,
+  }).onConflictDoNothing();
 }
 
 export async function createRoom(name: string) {
   const code = randomBytes(6).toString("hex");
-  await ensureRoom(code, name);
-  return code;
+  const facilitatorToken = randomBytes(32).toString("hex");
+  await ensureRoom(code, name, hashFacilitatorToken(facilitatorToken));
+  return { code, facilitatorToken };
 }
 
 export async function getRoomState(code: string, participantId?: string | null) {
@@ -98,8 +120,10 @@ export async function getRoomState(code: string, participantId?: string | null) 
     ? Math.round((Math.max(...Object.values(counts)) / numericVotes.length) * 100)
     : 0;
 
+  const { facilitatorTokenHash: _facilitatorTokenHash, ...publicRoom } = room;
+
   return {
-    room,
+    room: publicRoom,
     stories: storyRows,
     participants: participantRows.map((participant) => {
       const vote = voteRows.find((item) => item.participantId === participant.id);
@@ -123,13 +147,19 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
 
   if (action === "join") {
     const name = String(input.name ?? "Pessoa").trim().slice(0, 40) || "Pessoa";
+    const facilitatorToken = String(input.facilitatorToken ?? "");
     const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
     const colors = ["plum", "coral", "lime", "blue", "gold"];
     const color = colors[[...participantId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % colors.length];
     const currentParticipants = await db.select().from(participants).where(eq(participants.roomCode, code));
-    const role = currentParticipants.length === 0 ? "Facilitador" : "Time";
+    const existingParticipant = currentParticipants.find((participant) => participant.id === participantId);
+    const role = hasValidFacilitatorToken(room.facilitatorTokenHash, facilitatorToken)
+      ? "Facilitador"
+      : !room.facilitatorTokenHash
+        ? existingParticipant?.role ?? (currentParticipants.length === 0 ? "Facilitador" : "Time")
+        : "Time";
     await db.insert(participants).values({ roomCode: code, id: participantId, name, initials, role, color: color ?? "plum" })
-      .onConflictDoUpdate({ target: [participants.roomCode, participants.id], set: { name, initials, color: color ?? "plum", lastSeenAt: new Date() } });
+      .onConflictDoUpdate({ target: [participants.roomCode, participants.id], set: { name, initials, role, color: color ?? "plum", lastSeenAt: new Date() } });
     return;
   }
 
@@ -191,6 +221,21 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
   }
 
   if (action === "reveal") {
+    const facilitatorToken = String(input.facilitatorToken ?? "");
+    let canReveal = hasValidFacilitatorToken(room.facilitatorTokenHash, facilitatorToken);
+
+    // Salas criadas antes do token de facilitador continuam funcionando.
+    if (!room.facilitatorTokenHash && participantId) {
+      const [requester] = await db
+        .select({ role: participants.role })
+        .from(participants)
+        .where(and(eq(participants.roomCode, code), eq(participants.id, participantId)));
+      canReveal = requester?.role === "Facilitador";
+    }
+
+    if (!canReveal) {
+      throw new RoomActionError("Somente o facilitador pode revelar as cartas", 403);
+    }
     await db.update(rooms).set({ revealed: true }).where(eq(rooms.code, code));
     return;
   }

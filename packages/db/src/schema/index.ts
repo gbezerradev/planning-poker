@@ -3,6 +3,7 @@ import { boolean, integer, pgTable, primaryKey, serial, text, timestamp, uniqueI
 export const rooms = pgTable("rooms", {
   code: text("code").primaryKey(),
   name: text("name").notNull(),
+  facilitatorTokenHash: text("facilitator_token_hash"),
   revealed: boolean("revealed").notNull().default(false),
   round: integer("round").notNull().default(1),
   activeStoryId: integer("active_story_id"),

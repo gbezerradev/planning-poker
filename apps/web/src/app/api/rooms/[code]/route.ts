@@ -1,5 +1,5 @@
-import { applyRoomAction, getRoomState } from "@/lib/room";
 import { NextResponse } from "next/server";
+import { applyRoomAction, getRoomState, RoomActionError } from "@/lib/room";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ code: 
     await applyRoomAction(code, input);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao atualizar a sala" }, { status: 500 });
+    const status = error instanceof RoomActionError ? error.status : 500;
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao atualizar a sala" }, { status });
   }
 }

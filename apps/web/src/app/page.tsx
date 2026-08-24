@@ -28,8 +28,9 @@ export default function Home() {
         body: JSON.stringify({ name: roomName }),
       });
       if (!response.ok) throw new Error("Não foi possível criar a sala");
-      const data = (await response.json()) as { code: string };
+      const data = (await response.json()) as { code: string; facilitatorToken: string };
       localStorage.setItem("ponto_name", creatorName.trim());
+      localStorage.setItem(`ponto_facilitator_${data.code}`, data.facilitatorToken);
       router.push(`/room/${data.code}`);
     } catch {
       toast.error("Não foi possível criar a sala. Verifique o PostgreSQL.");
