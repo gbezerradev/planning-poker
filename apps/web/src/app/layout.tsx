@@ -9,10 +9,14 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"),
-  title: "Ponto — Planning poker para times que decidem juntos",
+  title: "POKER — Planning poker para times que decidem juntos",
   description: "Planning poker colaborativo, simples e bonito para estimar histórias com seu time.",
+  icons: {
+    icon: "/logo.svg",
+    shortcut: "/logo.svg",
+  },
   openGraph: {
-    title: "PONTO — Planning poker",
+    title: "POKER — Planning poker",
     description: "Planning poker para times que decidem juntos.",
     images: [{ url: "/og.png", width: 1733, height: 908 }],
   },

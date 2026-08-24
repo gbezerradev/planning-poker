@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Copy, LockKeyhole, Plus, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Copy, LockKeyhole, Plus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -47,8 +47,8 @@ export default function Home() {
     <main className="landing-shell">
       <header className="landing-nav">
         <a className="brand landing-brand" href="/">
-          <span className="brand-mark"><Sparkles size={18} strokeWidth={2.4} /></span>
-          <span>PONTO</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>POKER</span>
         </a>
         <span className="private-pill"><LockKeyhole size={14} /> Salas privadas por link</span>
       </header>

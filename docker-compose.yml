@@ -1,4 +1,4 @@
-name: ponto-next
+name: poker
 
 services:
   web:

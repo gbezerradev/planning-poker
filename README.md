@@ -1,4 +1,4 @@
-# PONTO
+# POKER
 
 Planning poker colaborativo feito com Next.js, PostgreSQL e Drizzle. Não possui login: o facilitador cria uma sala privada por link e cada participante informa o próprio nome, salvo apenas no navegador.
 

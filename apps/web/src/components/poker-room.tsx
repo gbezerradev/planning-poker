@@ -277,9 +277,9 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Ponto home">
-          <span className="brand-mark"><Sparkles size={18} strokeWidth={2.4} /></span>
-          <span>PONTO</span>
+        <a className="brand" href="/" aria-label="Poker home">
+          <span className="brand-mark" aria-hidden="true" />
+          <span>POKER</span>
         </a>
         <div className="room-identity">
           <span className={`live-dot ${connectionError ? "is-offline" : ""}`} />
