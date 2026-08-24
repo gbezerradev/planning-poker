@@ -9,18 +9,35 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"),
+  applicationName: "POKER",
   title: "POKER — Planning poker para times que decidem juntos",
   description: "Planning poker colaborativo, simples e bonito para estimar histórias com seu time.",
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
     icon: "/logo.svg",
     shortcut: "/logo.svg",
   },
   openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "POKER",
+    locale: "pt_BR",
     title: "POKER — Planning poker",
     description: "Planning poker para times que decidem juntos.",
-    images: [{ url: "/og.png", width: 1733, height: 908 }],
+    images: [{ url: "/og.png", width: 1733, height: 908, alt: "POKER — Planning poker para times que decidem juntos" }],
   },
-  twitter: { card: "summary_large_image", images: ["/og.png"] },
+  twitter: {
+    card: "summary_large_image",
+    title: "POKER — Planning poker",
+    description: "Planning poker para times que decidem juntos.",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
