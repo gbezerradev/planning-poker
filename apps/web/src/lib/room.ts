@@ -3,7 +3,19 @@ import { db } from "@ponto-next/db";
 import { participants, rooms, stories, votes } from "@ponto-next/db/schema";
 import { and, asc, eq, gte, sql } from "drizzle-orm";
 
-const PRESENCE_TIMEOUT_MS = 8_000;
+const PRESENCE_TIMEOUT_MS = 5 * 60_000;
+const STORY_POINTS = [0, 1, 2, 3, 5, 8, 13, 21] as const;
+
+function getClosestStoryPoint(value: number) {
+  return STORY_POINTS.reduce((closest, storyPoint) =>
+    Math.abs(storyPoint - value) <= Math.abs(closest - value) ? storyPoint : closest
+  );
+}
+
+function getParticipantEntryTime(participantId: string) {
+  const match = /^presence_(\d+)_/.exec(participantId);
+  return match?.[1] ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
 
 export class RoomActionError extends Error {
   constructor(message: string, readonly status: number) {
@@ -93,13 +105,16 @@ export async function getRoomState(code: string, participantId?: string | null) 
 
   const storyRows = await db.select().from(stories).where(eq(stories.roomCode, code)).orderBy(asc(stories.position));
   const activeStory = storyRows.find((story) => story.id === room.activeStoryId) ?? storyRows[0];
-  const participantRows = await db
+  const participantRows = (await db
     .select()
     .from(participants)
     .where(and(
       eq(participants.roomCode, code),
       gte(participants.lastSeenAt, new Date(Date.now() - PRESENCE_TIMEOUT_MS))
-    ));
+    ))).sort((first, second) => {
+      const entryDifference = getParticipantEntryTime(first.id) - getParticipantEntryTime(second.id);
+      return entryDifference || first.id.localeCompare(second.id);
+    });
   const onlineParticipantIds = new Set(participantRows.map((participant) => participant.id));
   const voteRows = (activeStory
     ? await db
@@ -112,6 +127,7 @@ export async function getRoomState(code: string, participantId?: string | null) 
   const average = numericVotes.length
     ? Math.round((numericVotes.reduce((sum, vote) => sum + vote, 0) / numericVotes.length) * 10) / 10
     : 0;
+  const suggestedEstimate = numericVotes.length ? getClosestStoryPoint(average) : null;
   const counts = numericVotes.reduce<Record<number, number>>((acc, value) => {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
@@ -133,7 +149,7 @@ export async function getRoomState(code: string, participantId?: string | null) 
         vote: room.revealed || participant.id === participantId ? vote?.value ?? null : null,
       };
     }),
-    result: { average, agreement, votedCount: voteRows.length },
+    result: { suggestedEstimate, agreement, votedCount: voteRows.length },
   };
 }
 
@@ -168,9 +184,6 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
       .update(participants)
       .set({ lastSeenAt: new Date(0) })
       .where(and(eq(participants.roomCode, code), eq(participants.id, participantId)));
-    await db
-      .delete(votes)
-      .where(and(eq(votes.roomCode, code), eq(votes.participantId, participantId)));
     return;
   }
 

@@ -6,6 +6,8 @@ import {
   ChevronDown,
   Coffee,
   Copy,
+  LayoutGrid,
+  List,
   ListPlus,
   Plus,
   RotateCcw,
@@ -17,10 +19,12 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const DECK = ["0", "1", "2", "3", "5", "8", "13", "21", "?", "☕"];
+const TABLE_SEAT_LIMIT = 8;
 
 type Story = {
   id: number;
@@ -47,7 +51,7 @@ type RoomPayload = {
   room: { code: string; name: string; revealed: boolean; round: number; activeStoryId: number | null };
   stories: Story[];
   participants: Participant[];
-  result: { average: number; agreement: number; votedCount: number };
+  result: { suggestedEstimate: number | null; agreement: number; votedCount: number };
 };
 
 const EMPTY_STORY: Story = {
@@ -60,6 +64,14 @@ const EMPTY_STORY: Story = {
   position: 0,
   estimate: null,
 };
+
+function getVoteStatus(participant: Participant, revealed: boolean) {
+  if (!participant.voted) return "Aguardando";
+  if (!revealed) return "Voto enviado";
+  if (participant.vote === "☕") return "Pausa";
+  if (participant.vote === "?") return "Não sabe";
+  return participant.vote ? `${participant.vote} pontos` : "Sem voto";
+}
 
 export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [room, setRoom] = useState<RoomPayload | null>(null);
@@ -78,6 +90,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [addingStory, setAddingStory] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "list">("table");
   const [newStory, setNewStory] = useState({ key: "", title: "", description: "", tag: "Produto" });
 
   const loadRoom = useCallback(async (id: string) => {
@@ -107,10 +120,11 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   }, [facilitatorToken, loadRoom, participantId, roomCode]);
 
   useEffect(() => {
-    let id = localStorage.getItem("ponto_participant_id");
+    const participantStorageKey = `ponto_participant_${roomCode}`;
+    let id = sessionStorage.getItem(participantStorageKey);
     if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("ponto_participant_id", id);
+      id = `presence_${Date.now()}_${crypto.randomUUID()}`;
+      sessionStorage.setItem(participantStorageKey, id);
     }
     const savedName = localStorage.getItem("ponto_name") ?? "";
     const savedFacilitatorToken = localStorage.getItem(`ponto_facilitator_${roomCode}`) ?? "";
@@ -137,7 +151,14 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   useEffect(() => {
     if (!participantId || !name) return;
     const interval = window.setInterval(() => loadRoom(participantId), 2000);
-    return () => window.clearInterval(interval);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadRoom(participantId);
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadRoom, name, participantId]);
 
   useEffect(() => {
@@ -154,10 +175,8 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
         });
       }
     };
-    window.addEventListener("pagehide", leaveRoom);
     window.addEventListener("beforeunload", leaveRoom);
     return () => {
-      window.removeEventListener("pagehide", leaveRoom);
       window.removeEventListener("beforeunload", leaveRoom);
     };
   }, [name, participantId, roomCode]);
@@ -231,8 +250,11 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   };
 
   const acceptEstimate = async () => {
-    const fibonacci = [0, 1, 2, 3, 5, 8, 13, 21];
-    const estimate = fibonacci.find((value) => value >= (room?.result.average ?? 0)) ?? 21;
+    const estimate = room?.result.suggestedEstimate;
+    if (estimate === null || estimate === undefined) {
+      toast.error("Não há votos numéricos para sugerir uma estimativa.");
+      return;
+    }
     await sendAction({ action: "accept", estimate });
     setSelected(null);
     toast.success(`${estimate} pontos registrados`);
@@ -286,18 +308,23 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const progress = room?.stories.length ? Math.round((completed / room.stories.length) * 100) : 0;
   const me = room?.participants.find((participant) => participant.id === participantId);
   const isFacilitator = me?.role === "Facilitador";
-  const seats = useMemo(() => {
-    const participants = room?.participants.slice(0, 5) ?? [];
-    return [...participants, ...Array.from({ length: Math.max(0, 5 - participants.length) }, (_, index) => ({
-      id: `empty-${index}`,
-      name: "Aguardando",
-      initials: "+",
-      role: "Lugar livre",
-      color: "empty",
-      voted: false,
-      vote: null,
-    }))];
-  }, [room?.participants]);
+  const presentParticipants = useMemo(() => room?.participants ?? [], [room?.participants]);
+  const tableParticipants = useMemo(() => presentParticipants.slice(0, TABLE_SEAT_LIMIT), [presentParticipants]);
+  const tableSeats = useMemo(() => {
+    return tableParticipants.map((participant, index) => {
+      const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / tableParticipants.length);
+      return {
+        participant,
+        style: {
+          "--seat-x": `${50 + (Math.cos(angle) * 39)}%`,
+          "--seat-y": `${50 + (Math.sin(angle) * 38)}%`,
+        } as CSSProperties,
+      };
+    });
+  }, [tableParticipants]);
+  const displayedPlayers = viewMode === "list"
+    ? presentParticipants.map((participant) => ({ participant, style: undefined }))
+    : tableSeats;
   const timerLabel = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
@@ -354,7 +381,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
           </div>
           <div className="session-note">
             <span className="note-icon"><Users size={18} /></span>
-            <div><strong>{room?.participants.length ?? 0} {room?.participants.length === 1 ? "pessoa" : "pessoas"} na sala</strong><small>Sincronização automática</small></div>
+            <div><strong>{presentParticipants.length} {presentParticipants.length === 1 ? "pessoa presente" : "pessoas presentes"}</strong><small>Sincronização automática</small></div>
             <span className="online-stack"><i /><i /><i /></span>
           </div>
         </aside>
@@ -426,7 +453,20 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
             </div>
           )}
 
-          <div className={`poker-table ${room?.room.revealed ? "is-revealed" : ""} ${storyCompleted ? "is-complete" : ""}`}>
+          <div className="view-toolbar">
+            <div>
+              <span className="eyebrow">VISUALIZAÇÃO</span>
+              <strong>{viewMode === "table" && presentParticipants.length > TABLE_SEAT_LIMIT
+                ? `${TABLE_SEAT_LIMIT} de ${presentParticipants.length} pessoas na mesa · primeiras a entrar`
+                : `${presentParticipants.length} ${presentParticipants.length === 1 ? "pessoa na rodada" : "pessoas na rodada"}`}</strong>
+            </div>
+            <div className="view-switcher" role="group" aria-label="Visualização dos votos">
+              <button type="button" className={viewMode === "table" ? "is-active" : ""} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><LayoutGrid size={15} /> Mesa</button>
+              <button type="button" className={viewMode === "list" ? "is-active" : ""} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><List size={15} /> Lista</button>
+            </div>
+          </div>
+
+          <div className={`poker-table ${viewMode === "list" ? "is-list-view" : ""} ${room?.room.revealed ? "is-revealed" : ""} ${storyCompleted ? "is-complete" : ""}`}>
             <div className="table-orbit" />
             <div className="table-center">
               {storyCompleted ? (
@@ -439,8 +479,8 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
               ) : room?.room.revealed ? (
                 <>
                   <span className="result-kicker"><Sparkles size={15} /> VOTOS REVELADOS</span>
-                  <strong className="average-number">{room.result.average}</strong>
-                  <span className="average-label">média da rodada</span>
+                  <strong className="average-number">{room.result.suggestedEstimate ?? "—"}</strong>
+                  <span className="average-label">story point mais próximo</span>
                   <div className="agreement"><span style={{ width: `${room.result.agreement}%` }} /><b>{room.result.agreement}% acordo</b></div>
                 </>
               ) : (
@@ -457,14 +497,15 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
               )}
             </div>
 
-            <div className="players-grid">
-              {seats.map((participant) => (
-                <div className="player" key={participant.id}>
+            <div className={`players-grid ${displayedPlayers.length > TABLE_SEAT_LIMIT ? "is-crowded" : ""}`}>
+              {displayedPlayers.map(({ participant, style }) => (
+                <div className="player" key={participant.id} style={style}>
                   <div className={`vote-card ${participant.voted ? "has-vote" : ""} ${room?.room.revealed && participant.vote ? "show-value" : ""}`}>
                     {room?.room.revealed && participant.vote ? <b>{participant.vote}</b> : participant.voted ? <span className="card-pattern">P</span> : <span className="waiting-mark">•••</span>}
                   </div>
                   <div className={`avatar avatar-${participant.color}`}>{participant.initials}</div>
                   <div className="player-copy"><strong>{participant.name}{participant.id === participantId && <em>você</em>}</strong><small>{participant.role}</small></div>
+                  <span className="list-vote-status">{getVoteStatus(participant, Boolean(room?.room.revealed))}</span>
                   {participant.voted && <span className="voted-check"><Check size={11} /></span>}
                 </div>
               ))}
@@ -474,7 +515,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
           {room?.room.revealed && !storyCompleted && (
             <div className="round-actions">
               <button className="secondary-action" onClick={resetRound}><RotateCcw size={16} /> Nova votação</button>
-              <button className="primary-action" onClick={acceptEstimate}><Check size={16} /> Aceitar estimativa</button>
+              <button className="primary-action" onClick={acceptEstimate} disabled={room.result.suggestedEstimate === null}><Check size={16} /> Aceitar estimativa</button>
             </div>
           )}
 
