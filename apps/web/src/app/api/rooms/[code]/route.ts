@@ -19,8 +19,16 @@ export async function GET(request: Request, context: { params: Promise<{ code: s
 export async function POST(request: Request, context: { params: Promise<{ code: string }> }) {
   try {
     const { code } = await context.params;
-    const input = await request.json();
-    const result = await applyRoomAction(code, input);
+    let input: unknown;
+    try {
+      input = await request.json();
+    } catch {
+      return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return NextResponse.json({ error: "O corpo da requisição deve ser um objeto JSON" }, { status: 400 });
+    }
+    const result = await applyRoomAction(code, input as Record<string, unknown>);
     return NextResponse.json({ ok: true, ...(result ?? {}) });
   } catch (error) {
     const status = error instanceof RoomActionError ? error.status : 500;
