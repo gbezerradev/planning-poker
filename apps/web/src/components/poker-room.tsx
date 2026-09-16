@@ -267,7 +267,6 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
           <div className="game-content">
           <div className="voting-header">
             <div>
-              <span className="voting-code"><i />VOTAÇÃO ÚNICA<em>SESSÃO AO VIVO</em></span>
               <h1>Uma decisão por vez.</h1>
               <p>Escolham uma carta, revelem os votos e busquem consenso juntos.</p>
             </div>

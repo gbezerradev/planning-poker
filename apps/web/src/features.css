@@ -1,8 +1,5 @@
 .voting-header { max-width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-.voting-code { display: flex; align-items: center; gap: 7px; color: #5f596b; font-size: 11px; font-weight: 900; letter-spacing: .08em; }
-.voting-code > i { width: 7px; height: 7px; border-radius: 2px; background: #ff876c; }
-.voting-code em { margin-left: 3px; padding: 3px 6px; border-radius: 4px; background: #ebe6fb; color: #6d5bc5; font-size: 9px; font-style: normal; letter-spacing: .04em; }
-.voting-header h1 { max-width: 690px; margin: 10px 0 8px; color: #211f32; font: 700 clamp(25px, 3vw, 38px)/1.08 Georgia, serif; letter-spacing: -.035em; }
+.voting-header h1 { max-width: 690px; margin: 0 0 8px; color: #211f32; font: 700 clamp(25px, 3vw, 38px)/1.08 Georgia, serif; letter-spacing: -.035em; }
 .voting-header p { max-width: 650px; margin: 0; color: #625d6b; font-size: 14px; line-height: 1.6; }
 .voting-presence { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; margin-top: 4px; padding: 10px 12px; border: 1px solid #d8d2c9; border-radius: 11px; background: #fbf9f4; color: #6c59c4; }
 .voting-presence > span { display: grid; }
@@ -38,8 +35,6 @@
 /* Legibilidade */
 body { font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 .eyebrow { color: #6f6978; font-size: 10.5px; letter-spacing: .14em; }
-.voting-code { font-size: 11px; }
-.voting-code em { font-size: 9.5px; }
 .voting-header p { color: #625d6b; font-size: 14px; line-height: 1.6; }
 .voting-presence strong { font-size: 11.5px; }
 .voting-presence small { color: #696370; font-size: 9.5px; }
