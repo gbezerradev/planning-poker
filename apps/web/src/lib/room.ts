@@ -245,7 +245,10 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
     if (!hasValidParticipantToken(participant, String(input.participantToken ?? ""))) {
       throw new RoomActionError("Sessão do participante inválida", 403);
     }
-    if (room.revealed || !VALID_CARDS.includes(value as typeof VALID_CARDS[number])) return;
+    if (room.revealed) return;
+    if (!VALID_CARDS.includes(value as typeof VALID_CARDS[number])) {
+      throw new RoomActionError("Carta de votação inválida", 400);
+    }
     room.votes.set(participantId, value);
     participant.lastSeenAt = Date.now();
     room.lastActivityAt = Date.now();
