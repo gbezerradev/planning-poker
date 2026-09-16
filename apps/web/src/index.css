@@ -7,7 +7,7 @@ button,a,input { font:inherit; }
 button { color:inherit; }
 .app-shell { min-height:100vh; background:#f6f3ec; }
 .topbar { height:76px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; border-bottom:1px solid #ddd8cf; background:rgba(250,248,243,.96); position:sticky; top:0; z-index:30; }
-.brand { height:100%; display:flex; align-items:center; gap:12px; padding:0 28px; border-right:1px solid #ddd8cf; color:#201e31; text-decoration:none; font-weight:900; letter-spacing:.16em; }
+.brand { height:100%; display:flex; align-items:center; gap:12px; padding:0 28px; color:#201e31; text-decoration:none; font-weight:900; letter-spacing:.16em; }
 .brand-mark { width:42px; height:42px; flex:0 0 42px; background:url("/logo.svg") center/contain no-repeat; filter:drop-shadow(2px 3px 0 rgba(36,34,56,.2)); transition:transform .18s ease; }
 .brand:hover .brand-mark { transform:translateY(-2px) rotate(-2deg); }
 .room-identity { justify-self:center; display:flex; align-items:center; gap:11px; padding:9px 13px; border-radius:12px; }
