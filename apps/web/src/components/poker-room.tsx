@@ -210,7 +210,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
       setName(cleanName);
       toast.success(`Bem-vindo à mesa, ${cleanName}!`);
     } catch {
-      toast.error("Não foi possível entrar na sala. Verifique o banco de dados.");
+      toast.error("Não foi possível entrar na sala. Tente novamente.");
     } finally {
       setJoining(false);
     }

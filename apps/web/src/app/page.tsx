@@ -33,7 +33,7 @@ export default function Home() {
       localStorage.setItem(`ponto_facilitator_${data.code}`, data.facilitatorToken);
       router.push(`/room/${data.code}`);
     } catch {
-      toast.error("Não foi possível criar a sala. Verifique o PostgreSQL.");
+      toast.error("Não foi possível criar a sala. Tente novamente.");
       setCreating(false);
     }
   };
