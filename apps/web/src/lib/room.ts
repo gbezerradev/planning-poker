@@ -213,7 +213,7 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
       : randomBytes(32).toString("hex");
     const role = hasValidFacilitatorToken(room.facilitatorTokenHash, facilitatorToken)
       ? "Facilitador"
-      : existingParticipant?.role ?? (room.participants.size === 0 ? "Facilitador" : "Time");
+      : existingParticipant?.role ?? "Time";
 
     room.participants.set(participantId, {
       id: participantId,
