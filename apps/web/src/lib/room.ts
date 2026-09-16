@@ -8,6 +8,7 @@ const VALID_CARDS = ["0", "1", "2", "3", "5", "8", "13", "21", "?", "☕"] as co
 
 type ParticipantState = {
   id: string;
+  participantTokenHash: string;
   name: string;
   initials: string;
   role: string;
@@ -47,6 +48,14 @@ function hashFacilitatorToken(token: string) {
 
 function hasValidFacilitatorToken(tokenHash: string | null, token: string) {
   return Boolean(tokenHash && token && hashFacilitatorToken(token) === tokenHash);
+}
+
+function hashParticipantToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function hasValidParticipantToken(participant: ParticipantState | undefined, token: string) {
+  return Boolean(participant && token && hashParticipantToken(token) === participant.participantTokenHash);
 }
 
 function createRoomState(code: string, name: string, facilitatorTokenHash: string | null): RoomState {
@@ -130,14 +139,13 @@ export async function createRoom(name: string) {
   return { code, facilitatorToken };
 }
 
-export async function getRoomState(code: string, participantId?: string | null) {
+export async function getRoomState(code: string, participantId?: string | null, participantToken?: string | null) {
   pruneInactiveRooms();
   const room = getExistingRoom(code);
 
-  if (participantId) {
-    const participant = room.participants.get(participantId);
-    if (participant) participant.lastSeenAt = Date.now();
-  }
+  const currentParticipant = participantId ? room.participants.get(participantId) : undefined;
+  const isCurrentParticipant = hasValidParticipantToken(currentParticipant, participantToken ?? "");
+  if (isCurrentParticipant && currentParticipant) currentParticipant.lastSeenAt = Date.now();
 
   room.lastActivityAt = Date.now();
   const onlineParticipants = [...room.participants.values()]
@@ -176,7 +184,7 @@ export async function getRoomState(code: string, participantId?: string | null) 
         role: participant.role,
         color: participant.color,
         voted: vote !== null,
-        vote: room.revealed || participant.id === participantId ? vote : null,
+        vote: room.revealed || (participant.id === participantId && isCurrentParticipant) ? vote : null,
       };
     }),
     result: { suggestedEstimate, agreement, votedCount: voteEntries.length },
@@ -197,12 +205,19 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
     const colors = ["plum", "coral", "lime", "blue", "gold"];
     const color = colors[[...participantId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % colors.length] ?? "plum";
     const existingParticipant = room.participants.get(participantId);
+    if (existingParticipant && !hasValidParticipantToken(existingParticipant, String(input.participantToken ?? ""))) {
+      throw new RoomActionError("Sessão do participante inválida", 403);
+    }
+    const participantToken = existingParticipant
+      ? String(input.participantToken)
+      : randomBytes(32).toString("hex");
     const role = hasValidFacilitatorToken(room.facilitatorTokenHash, facilitatorToken)
       ? "Facilitador"
       : existingParticipant?.role ?? (room.participants.size === 0 ? "Facilitador" : "Time");
 
     room.participants.set(participantId, {
       id: participantId,
+      participantTokenHash: hashParticipantToken(participantToken),
       name,
       initials,
       role,
@@ -210,10 +225,14 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
       lastSeenAt: Date.now(),
     });
     room.lastActivityAt = Date.now();
-    return;
+    return { participantToken };
   }
 
   if (action === "leave" && participantId) {
+    const participant = room.participants.get(participantId);
+    if (!hasValidParticipantToken(participant, String(input.participantToken ?? ""))) {
+      throw new RoomActionError("Sessão do participante inválida", 403);
+    }
     room.participants.delete(participantId);
     room.votes.delete(participantId);
     room.lastActivityAt = Date.now();
@@ -222,9 +241,13 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
 
   if (action === "vote") {
     const value = String(input.value ?? "");
-    if (!participantId || room.revealed || !room.participants.has(participantId) || !VALID_CARDS.includes(value as typeof VALID_CARDS[number])) return;
+    const participant = room.participants.get(participantId);
+    if (!hasValidParticipantToken(participant, String(input.participantToken ?? ""))) {
+      throw new RoomActionError("Sessão do participante inválida", 403);
+    }
+    if (room.revealed || !VALID_CARDS.includes(value as typeof VALID_CARDS[number])) return;
     room.votes.set(participantId, value);
-    room.participants.get(participantId)!.lastSeenAt = Date.now();
+    participant.lastSeenAt = Date.now();
     room.lastActivityAt = Date.now();
     return;
   }

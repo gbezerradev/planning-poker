@@ -48,6 +48,7 @@ function getVoteStatus(participant: Participant, revealed: boolean) {
 export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [room, setRoom] = useState<RoomPayload | null>(null);
   const [participantId, setParticipantId] = useState("");
+  const [participantToken, setParticipantToken] = useState("");
   const [facilitatorToken, setFacilitatorToken] = useState("");
   const [name, setName] = useState("");
   const [nameInput, setNameInput] = useState("");
@@ -59,9 +60,12 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [seconds, setSeconds] = useState(0);
   const [viewMode, setViewMode] = useState<"table" | "list">("table");
 
-  const loadRoom = useCallback(async (id: string) => {
+  const loadRoom = useCallback(async (id: string, token: string) => {
     try {
-      const response = await fetch(`/api/rooms/${roomCode}?participantId=${encodeURIComponent(id)}`, { cache: "no-store" });
+      const response = await fetch(`/api/rooms/${roomCode}?participantId=${encodeURIComponent(id)}`, {
+        cache: "no-store",
+        headers: { "X-Participant-Token": token },
+      });
       if (!response.ok) throw new Error("offline");
       const data = (await response.json()) as RoomPayload;
       setRoom(data);
@@ -79,11 +83,17 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     const response = await fetch(`/api/rooms/${roomCode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, participantId, facilitatorToken }),
+      body: JSON.stringify({ ...payload, participantId, participantToken, facilitatorToken }),
     });
     if (!response.ok) throw new Error("Não foi possível atualizar a sala");
-    await loadRoom(participantId);
-  }, [facilitatorToken, loadRoom, participantId, roomCode]);
+    const result = (await response.json()) as { participantToken?: string };
+    const nextParticipantToken = result.participantToken ?? participantToken;
+    if (result.participantToken) {
+      sessionStorage.setItem(`ponto_participant_token_${roomCode}`, result.participantToken);
+      setParticipantToken(result.participantToken);
+    }
+    await loadRoom(participantId, nextParticipantToken);
+  }, [facilitatorToken, loadRoom, participantId, participantToken, roomCode]);
 
   useEffect(() => {
     const participantStorageKey = `ponto_participant_${roomCode}`;
@@ -92,8 +102,10 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
       id = `presence_${Date.now()}_${crypto.randomUUID()}`;
       sessionStorage.setItem(participantStorageKey, id);
     }
+    const savedParticipantToken = sessionStorage.getItem(`ponto_participant_token_${roomCode}`) ?? "";
     const savedName = localStorage.getItem("ponto_name") ?? "";
     const savedFacilitatorToken = localStorage.getItem(`ponto_facilitator_${roomCode}`) ?? "";
+    setParticipantToken(savedParticipantToken);
     setFacilitatorToken(savedFacilitatorToken);
     setParticipantId(id);
     setName(savedName);
@@ -105,10 +117,18 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
         body: JSON.stringify({
           action: "join",
           participantId: id,
+          participantToken: savedParticipantToken,
           name: savedName,
           facilitatorToken: savedFacilitatorToken,
         }),
-      }).then(() => loadRoom(id));
+      }).then(async (response) => {
+        if (!response.ok) throw new Error("Não foi possível restaurar a sessão");
+        const result = (await response.json()) as { participantToken?: string };
+        const nextParticipantToken = result.participantToken ?? savedParticipantToken;
+        if (result.participantToken) sessionStorage.setItem(`ponto_participant_token_${roomCode}`, result.participantToken);
+        setParticipantToken(nextParticipantToken);
+        await loadRoom(id, nextParticipantToken);
+      }).catch(() => setConnectionError(true));
     } else {
       setLoading(false);
     }
@@ -116,21 +136,21 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
 
   useEffect(() => {
     if (!participantId || !name) return;
-    const interval = window.setInterval(() => loadRoom(participantId), 2000);
+    const interval = window.setInterval(() => loadRoom(participantId, participantToken), 2000);
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadRoom(participantId);
+      if (document.visibilityState === "visible") void loadRoom(participantId, participantToken);
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [loadRoom, name, participantId]);
+  }, [loadRoom, name, participantId, participantToken]);
 
   useEffect(() => {
     if (!participantId || !name) return;
     const leaveRoom = () => {
-      const body = JSON.stringify({ action: "leave", participantId });
+      const body = JSON.stringify({ action: "leave", participantId, participantToken });
       const queued = navigator.sendBeacon(`/api/rooms/${roomCode}`, new Blob([body], { type: "application/json" }));
       if (!queued) {
         void fetch(`/api/rooms/${roomCode}`, {
@@ -145,7 +165,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     return () => {
       window.removeEventListener("beforeunload", leaveRoom);
     };
-  }, [name, participantId, roomCode]);
+  }, [name, participantId, participantToken, roomCode]);
 
   useEffect(() => {
     if (!timerRunning) return;
