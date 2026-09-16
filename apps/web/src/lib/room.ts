@@ -246,6 +246,10 @@ export async function applyRoomAction(code: string, input: Record<string, unknow
   }
 
   if (action === "reset") {
+    const facilitatorToken = String(input.facilitatorToken ?? "");
+    if (!hasValidFacilitatorToken(room.facilitatorTokenHash, facilitatorToken)) {
+      throw new RoomActionError("Somente o facilitador pode iniciar uma nova votação", 403);
+    }
     room.revealed = false;
     room.votes.clear();
     room.lastActivityAt = Date.now();

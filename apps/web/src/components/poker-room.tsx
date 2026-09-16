@@ -328,7 +328,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          {room?.room.revealed && (
+          {room?.room.revealed && isFacilitator && (
             <div className="round-actions">
               <button className="secondary-action" onClick={resetRound}><RotateCcw size={16} /> Nova votação</button>
             </div>
