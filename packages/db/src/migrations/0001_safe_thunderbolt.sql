@@ -1,1 +1,0 @@
-ALTER TABLE "rooms" ADD COLUMN "facilitator_token_hash" text;

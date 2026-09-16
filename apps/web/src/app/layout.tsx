@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"),
   applicationName: "POKER",
   title: "POKER — Planning poker para times que decidem juntos",
-  description: "Planning poker colaborativo, simples e bonito para estimar histórias com seu time.",
+  description: "Planning poker colaborativo, simples e bonito para decisões do seu time.",
   alternates: {
     canonical: "/",
   },

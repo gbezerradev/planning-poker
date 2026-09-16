@@ -8,16 +8,11 @@ import {
   Copy,
   LayoutGrid,
   List,
-  ListPlus,
-  Plus,
   RotateCcw,
-  Save,
   Sparkles,
-  StickyNote,
   Timer,
   Users,
   WifiOff,
-  X,
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,17 +20,6 @@ import { toast } from "sonner";
 
 const DECK = ["0", "1", "2", "3", "5", "8", "13", "21", "?", "☕"];
 const TABLE_SEAT_LIMIT = 8;
-
-type Story = {
-  id: number;
-  key: string;
-  title: string;
-  description: string;
-  notes: string;
-  tag: string;
-  position: number;
-  estimate: number | null;
-};
 
 type Participant = {
   id: string;
@@ -48,21 +32,9 @@ type Participant = {
 };
 
 type RoomPayload = {
-  room: { code: string; name: string; revealed: boolean; round: number; activeStoryId: number | null };
-  stories: Story[];
+  room: { code: string; name: string; revealed: boolean };
   participants: Participant[];
   result: { suggestedEstimate: number | null; agreement: number; votedCount: number };
-};
-
-const EMPTY_STORY: Story = {
-  id: 0,
-  key: "",
-  title: "",
-  description: "",
-  notes: "",
-  tag: "",
-  position: 0,
-  estimate: null,
 };
 
 function getVoteStatus(participant: Participant, revealed: boolean) {
@@ -85,13 +57,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   const [connectionError, setConnectionError] = useState(false);
   const [timerRunning, setTimerRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [backlogOpen, setBacklogOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [addingStory, setAddingStory] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "list">("table");
-  const [newStory, setNewStory] = useState({ key: "", title: "", description: "", tag: "Produto" });
 
   const loadRoom = useCallback(async (id: string) => {
     try {
@@ -187,20 +153,17 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     return () => window.clearInterval(interval);
   }, [timerRunning]);
 
-  const activeStory = room?.stories.find((story) => story.id === room.room.activeStoryId) ?? room?.stories[0] ?? EMPTY_STORY;
-
   const reveal = useCallback(async () => {
     const isFacilitator = room?.participants.some(
       (participant) => participant.id === participantId && participant.role === "Facilitador"
     );
     if (!isFacilitator) return;
-    if (activeStory.estimate !== null) return;
     if (!selected) {
       toast.error("Escolha uma carta antes de revelar os votos.");
       return;
     }
     await sendAction({ action: "reveal" });
-  }, [activeStory.estimate, participantId, room?.participants, selected, sendAction]);
+  }, [participantId, room?.participants, selected, sendAction]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -234,7 +197,7 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
   };
 
   const chooseCard = async (value: string) => {
-    if (room?.room.revealed || activeStory.estimate !== null) return;
+    if (room?.room.revealed) return;
     setSelected(value);
     try {
       await sendAction({ action: "vote", value });
@@ -249,63 +212,11 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
     toast("Nova rodada iniciada", { description: "As cartas voltaram para a mão." });
   };
 
-  const acceptEstimate = async () => {
-    const estimate = room?.result.suggestedEstimate;
-    if (estimate === null || estimate === undefined) {
-      toast.error("Não há votos numéricos para sugerir uma estimativa.");
-      return;
-    }
-    await sendAction({ action: "accept", estimate });
-    setSelected(null);
-    toast.success(`${estimate} pontos registrados`);
-  };
-
-  const activateStory = async (storyId: number) => {
-    if (storyId === room?.room.activeStoryId) return;
-    setSelected(null);
-    await sendAction({ action: "activate", storyId });
-  };
-
   const copyInvite = async () => {
     await navigator.clipboard.writeText(window.location.href);
     toast.success("Link da sala copiado!");
   };
 
-  const addStory = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!newStory.title.trim()) return;
-    setAddingStory(true);
-    try {
-      await sendAction({ action: "addStory", ...newStory });
-      setNewStory({ key: "", title: "", description: "", tag: "Produto" });
-      setBacklogOpen(false);
-      toast.success("História adicionada ao backlog");
-    } catch {
-      toast.error("Não foi possível adicionar a história.");
-    } finally {
-      setAddingStory(false);
-    }
-  };
-
-  const saveNotes = async () => {
-    setSavingNotes(true);
-    try {
-      await sendAction({ action: "updateNotes", storyId: activeStory.id, notes: noteDraft });
-      toast.success("Notas salvas");
-    } catch {
-      toast.error("Não foi possível salvar as notas.");
-    } finally {
-      setSavingNotes(false);
-    }
-  };
-
-  const hasStories = Boolean(room?.stories.length);
-  const storyCompleted = activeStory.estimate !== null;
-  useEffect(() => {
-    setNoteDraft(activeStory.notes ?? "");
-  }, [activeStory.id, activeStory.notes]);
-  const completed = room?.stories.filter((story) => story.estimate !== null).length ?? 0;
-  const progress = room?.stories.length ? Math.round((completed / room.stories.length) * 100) : 0;
   const me = room?.participants.find((participant) => participant.id === participantId);
   const isFacilitator = me?.role === "Facilitador";
   const presentParticipants = useMemo(() => room?.participants ?? [], [room?.participants]);
@@ -352,106 +263,19 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
       </header>
 
       <div className="workspace">
-        <aside className="story-panel">
-          <div className="panel-heading">
-            <div><span className="eyebrow">BACKLOG</span><h2>Histórias da rodada</h2></div>
-            <button className="icon-button" aria-label="Adicionar história" onClick={() => setBacklogOpen(true)}><Plus size={18} /></button>
-          </div>
-          <div className="progress-copy"><span>{completed} de {room?.stories.length ?? 0} estimadas</span><strong>{progress}%</strong></div>
-          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-          <div className="story-list">
-            {(room?.stories ?? []).map((story, index) => (
-              <button key={story.id} className={`story-item ${story.id === activeStory.id ? "is-active" : ""}`} onClick={() => activateStory(story.id)}>
-                <span className="story-index">{String(index + 1).padStart(2, "0")}</span>
-                <span className="story-copy">
-                  <span className="story-meta"><b>{story.key}</b><i>{story.tag}</i></span>
-                  <strong>{story.title}</strong>
-                </span>
-                {story.estimate !== null ? <span className="estimate-badge">{story.estimate}</span> : <ArrowRight className="story-arrow" size={17} />}
-              </button>
-            ))}
-            {room && !hasStories && (
-              <div className="backlog-empty">
-                <span><ListPlus size={18} /></span>
-                <strong>Seu backlog está vazio</strong>
-                <p>Comece pela história que o time vai estimar.</p>
-                <button onClick={() => setBacklogOpen(true)}><Plus size={14} /> Adicionar história</button>
-              </div>
-            )}
-          </div>
-          <div className="session-note">
-            <span className="note-icon"><Users size={18} /></span>
-            <div><strong>{presentParticipants.length} {presentParticipants.length === 1 ? "pessoa presente" : "pessoas presentes"}</strong><small>Sincronização automática</small></div>
-            <span className="online-stack"><i /><i /><i /></span>
-          </div>
-        </aside>
-
         <section className="game-area">
-          {room && !hasStories && (
-            <div className="room-onboarding">
-              <div className="onboarding-content">
-                <span className="onboarding-kicker"><Sparkles size={14} /> {me?.role === "Facilitador" ? "VOCÊ É O FACILITADOR" : "SALA PRONTA"}</span>
-                <h1>{me?.role === "Facilitador" ? `Sala pronta, ${name.split(/\s+/)[0]}.` : "A sala está pronta."}</h1>
-                <p>Comece adicionando o primeiro item que o time vai estimar. Leva menos de um minuto.</p>
-
-                <div className="onboarding-steps" aria-label="Como começar">
-                  <div className="is-current"><span>1</span><div><strong>Crie a primeira história</strong><small>Título, contexto e categoria.</small></div></div>
-                  <div><span>2</span><div><strong>Compartilhe a sala</strong><small>Envie o link privado para o time.</small></div></div>
-                  <div><span>3</span><div><strong>Estimem juntos</strong><small>Votem, revelem e salvem o resultado.</small></div></div>
-                </div>
-
-                <div className="onboarding-actions">
-                  <button className="onboarding-primary" onClick={() => setBacklogOpen(true)}><Plus size={17} /> Criar primeira história</button>
-                  <button className="onboarding-secondary" onClick={copyInvite}><Copy size={16} /> Copiar convite</button>
-                </div>
-              </div>
-
-              <div className="onboarding-visual" aria-hidden="true">
-                <div className="onboarding-table">
-                  <span className="preview-card preview-card-one">3</span>
-                  <span className="preview-card preview-card-two">5</span>
-                  <span className="preview-card preview-card-three">8</span>
-                  <div className="table-empty-state">
-                    <span><ListPlus size={19} /></span>
-                    <strong>Primeira história</strong>
-                    <small>entra aqui</small>
-                  </div>
-                </div>
-                <span className="visual-caption"><i /> Mesa pronta para o time</span>
-              </div>
-            </div>
-          )}
-
-          <div className={`game-content ${!hasStories ? "is-hidden" : ""}`}>
-          <div className="story-header">
+          <div className="game-content">
+          <div className="voting-header">
             <div>
-              <span className="story-code"><i />{activeStory.key}<em>{activeStory.tag}</em></span>
-              <h1>{activeStory.title}</h1>
-              <p>{activeStory.description}</p>
+              <span className="voting-code"><i />VOTAÇÃO ÚNICA<em>SESSÃO AO VIVO</em></span>
+              <h1>Uma decisão por vez.</h1>
+              <p>Escolham uma carta, revelem os votos e busquem consenso juntos.</p>
             </div>
-            <button className={`notes-toggle ${notesOpen ? "is-active" : ""}`} aria-label="Abrir notas da história" onClick={() => setNotesOpen(!notesOpen)}>
-              <StickyNote size={17} /> Notas {activeStory.notes && <i />}
-            </button>
+            <div className="voting-presence">
+              <Users size={17} />
+              <span><strong>{presentParticipants.length} {presentParticipants.length === 1 ? "pessoa" : "pessoas"}</strong><small>na sala agora</small></span>
+            </div>
           </div>
-
-          {notesOpen && (
-            <div className="story-notes">
-              <div className="notes-heading">
-                <div><StickyNote size={16} /><span><b>Notas da história</b><small>Contexto compartilhado com toda a equipe</small></span></div>
-                <button aria-label="Fechar notas" onClick={() => setNotesOpen(false)}><X size={16} /></button>
-              </div>
-              <textarea
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                maxLength={5000}
-                placeholder="Registre dúvidas, dependências, riscos ou decisões importantes…"
-              />
-              <div className="notes-footer">
-                <span>{noteDraft.length}/5000</span>
-                <button onClick={saveNotes} disabled={savingNotes || noteDraft === activeStory.notes}><Save size={14} />{savingNotes ? "Salvando…" : "Salvar notas"}</button>
-              </div>
-            </div>
-          )}
 
           <div className="view-toolbar">
             <div>
@@ -466,21 +290,14 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          <div className={`poker-table ${viewMode === "list" ? "is-list-view" : ""} ${room?.room.revealed ? "is-revealed" : ""} ${storyCompleted ? "is-complete" : ""}`}>
+          <div className={`poker-table ${viewMode === "list" ? "is-list-view" : ""} ${room?.room.revealed ? "is-revealed" : ""}`}>
             <div className="table-orbit" />
             <div className="table-center">
-              {storyCompleted ? (
-                <>
-                  <span className="completed-mark"><Check size={20} /></span>
-                  <span className="result-kicker">ESTIMATIVA ACEITA</span>
-                  <strong className="average-number">{activeStory.estimate}</strong>
-                  <span className="average-label">pontos registrados</span>
-                </>
-              ) : room?.room.revealed ? (
+              {room?.room.revealed ? (
                 <>
                   <span className="result-kicker"><Sparkles size={15} /> VOTOS REVELADOS</span>
                   <strong className="average-number">{room.result.suggestedEstimate ?? "—"}</strong>
-                  <span className="average-label">story point mais próximo</span>
+                  <span className="average-label">estimativa sugerida</span>
                   <div className="agreement"><span style={{ width: `${room.result.agreement}%` }} /><b>{room.result.agreement}% acordo</b></div>
                 </>
               ) : (
@@ -512,57 +329,27 @@ export default function PokerRoom({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          {room?.room.revealed && !storyCompleted && (
+          {room?.room.revealed && (
             <div className="round-actions">
               <button className="secondary-action" onClick={resetRound}><RotateCcw size={16} /> Nova votação</button>
-              <button className="primary-action" onClick={acceptEstimate} disabled={room.result.suggestedEstimate === null}><Check size={16} /> Aceitar estimativa</button>
             </div>
           )}
 
-          {storyCompleted ? (
-            <div className="estimate-locked">
-              <span><Check size={18} /></span>
-              <div><span className="eyebrow">HISTÓRIA CONCLUÍDA</span><h2>Estimativa encerrada</h2><p>Selecione outra história pendente no backlog ou adicione um novo item.</p></div>
+          <div className="deck-area">
+            <div className="deck-heading"><div><span className="eyebrow">SUA ESTIMATIVA</span><h2>{selected ? `Você escolheu ${selected}` : "Escolha uma carta"}</h2></div><span>Escala Fibonacci</span></div>
+            <div className="deck" role="list" aria-label="Cartas de estimativa">
+              {DECK.map((card) => (
+                <button key={card} className={`deck-card ${selected === card ? "is-selected" : ""}`} onClick={() => chooseCard(card)} disabled={room?.room.revealed || !name} aria-label={card === "☕" ? "Pedir uma pausa" : `Estimar ${card} pontos`}>
+                  {card === "☕" ? <Coffee size={22} /> : card}
+                  {selected === card && <span><Check size={12} /></span>}
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="deck-area">
-              <div className="deck-heading"><div><span className="eyebrow">SUA ESTIMATIVA</span><h2>{selected ? `Você escolheu ${selected}` : "Escolha uma carta"}</h2></div><span>Escala Fibonacci</span></div>
-              <div className="deck" role="list" aria-label="Cartas de estimativa">
-                {DECK.map((card) => (
-                  <button key={card} className={`deck-card ${selected === card ? "is-selected" : ""}`} onClick={() => chooseCard(card)} disabled={room?.room.revealed || !name} aria-label={card === "☕" ? "Pedir uma pausa" : `Estimar ${card} pontos`}>
-                    {card === "☕" ? <Coffee size={22} /> : card}
-                    {selected === card && <span><Check size={12} /></span>}
-                  </button>
-                ))}
-              </div>
-              <p className="deck-tip"><kbd>1–8</kbd> para votar <i /> <kbd>R</kbd> para revelar</p>
-            </div>
-          )}
+            <p className="deck-tip"><kbd>1–8</kbd> para votar <i /> <kbd>R</kbd> para revelar</p>
+          </div>
           </div>
         </section>
       </div>
-
-      {backlogOpen && (
-        <div className="backlog-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBacklogOpen(false); }}>
-          <form className="backlog-modal" onSubmit={addStory}>
-            <div className="modal-heading">
-              <span className="modal-mark"><Plus size={20} /></span>
-              <div><span className="eyebrow">NOVA HISTÓRIA</span><h2>Adicionar ao backlog</h2></div>
-              <button type="button" aria-label="Fechar" onClick={() => setBacklogOpen(false)}><X size={18} /></button>
-            </div>
-            <div className="form-row">
-              <label><span>Identificador <i>opcional</i></span><input value={newStory.key} onChange={(event) => setNewStory({ ...newStory, key: event.target.value })} maxLength={20} placeholder="PP-243" /></label>
-              <label><span>Categoria</span><select value={newStory.tag} onChange={(event) => setNewStory({ ...newStory, tag: event.target.value })}><option>Produto</option><option>Engenharia</option><option>Design</option><option>Segurança</option><option>Analytics</option></select></label>
-            </div>
-            <label><span>Título da história</span><input autoFocus required value={newStory.title} onChange={(event) => setNewStory({ ...newStory, title: event.target.value })} maxLength={140} placeholder="Ex.: Permitir exportar relatório em CSV" /></label>
-            <label><span>Descrição</span><textarea value={newStory.description} onChange={(event) => setNewStory({ ...newStory, description: event.target.value })} maxLength={1200} placeholder="Como usuário, quero…" /></label>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setBacklogOpen(false)}>Cancelar</button>
-              <button type="submit" disabled={!newStory.title.trim() || addingStory}>{addingStory ? "Adicionando…" : "Adicionar história"}<ArrowRight size={16} /></button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {!name && !loading && (
         <div className="join-overlay">
