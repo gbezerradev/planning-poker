@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 const PARTICIPANT_TIMEOUT_MS = 5 * 60_000;
 const ROOM_TIMEOUT_MS = 30 * 60_000;
+const ROOM_CODE_PATTERN = /^[a-f0-9]{12}$/;
 const ESTIMATE_POINTS = [0, 1, 2, 3, 5, 8, 13, 21] as const;
 const VALID_CARDS = ["0", "1", "2", "3", "5", "8", "13", "21", "?", "☕"] as const;
 
@@ -72,6 +73,25 @@ function getOrCreateRoom(code: string, roomName?: string, facilitatorTokenHash?:
   return room;
 }
 
+export function normalizeRoomCode(code: string) {
+  return code.trim().toLowerCase();
+}
+
+function getExistingRoom(code: string) {
+  const normalizedCode = normalizeRoomCode(code);
+  if (!ROOM_CODE_PATTERN.test(normalizedCode)) {
+    throw new RoomActionError("Sala não encontrada", 404);
+  }
+
+  const room = roomStore.get(normalizedCode);
+  if (!room) {
+    throw new RoomActionError("Sala não encontrada", 404);
+  }
+
+  room.lastActivityAt = Date.now();
+  return room;
+}
+
 function pruneInactiveRooms() {
   const now = Date.now();
 
@@ -97,6 +117,12 @@ export class RoomActionError extends Error {
   }
 }
 
+export function roomExists(code: string) {
+  pruneInactiveRooms();
+  const normalizedCode = normalizeRoomCode(code);
+  return ROOM_CODE_PATTERN.test(normalizedCode) && roomStore.has(normalizedCode);
+}
+
 export async function createRoom(name: string) {
   const code = randomBytes(6).toString("hex");
   const facilitatorToken = randomBytes(32).toString("hex");
@@ -106,7 +132,7 @@ export async function createRoom(name: string) {
 
 export async function getRoomState(code: string, participantId?: string | null) {
   pruneInactiveRooms();
-  const room = getOrCreateRoom(code);
+  const room = getExistingRoom(code);
 
   if (participantId) {
     const participant = room.participants.get(participantId);
@@ -159,7 +185,7 @@ export async function getRoomState(code: string, participantId?: string | null) 
 
 export async function applyRoomAction(code: string, input: Record<string, unknown>) {
   pruneInactiveRooms();
-  const room = getOrCreateRoom(code);
+  const room = getExistingRoom(code);
   const action = String(input.action ?? "");
   const participantId = String(input.participantId ?? "").slice(0, 80);
 
